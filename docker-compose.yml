@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.6
+    container_name: frappe-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-admin}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-frappe}
+      MYSQL_USER: ${MYSQL_USER:-frappe}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-frappe}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./mariadb-config:/etc/mysql/conf.d
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-character-set-client-handshake --bind-address=0.0.0.0
+    networks:
+      - frappe-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-cache:
+    image: redis:7-alpine
+    container_name: frappe-redis-cache
+    restart: unless-stopped
+    ports:
+      - "${REDIS_CACHE_PORT:-13000}:6379"
+    volumes:
+      - redis-cache-data:/data
+    networks:
+      - frappe-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-queue:
+    image: redis:7-alpine
+    container_name: frappe-redis-queue
+    restart: unless-stopped
+    ports:
+      - "${REDIS_QUEUE_PORT:-11000}:6379"
+    volumes:
+      - redis-queue-data:/data
+    networks:
+      - frappe-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-socketio:
+    image: redis:7-alpine
+    container_name: frappe-redis-socketio
+    restart: unless-stopped
+    ports:
+      - "${REDIS_SOCKETIO_PORT:-12000}:6379"
+    volumes:
+      - redis-socketio-data:/data
+    networks:
+      - frappe-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mariadb-data:
+    driver: local
+  redis-cache-data:
+    driver: local
+  redis-queue-data:
+    driver: local
+  redis-socketio-data:
+    driver: local
+
+networks:
+  frappe-network:
+    driver: bridge

@@ -1,0 +1,33 @@
+[mysqld]
+# Frappe recommended settings
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# InnoDB Settings
+innodb_file_per_table = 1
+innodb_buffer_pool_size = 256M
+innodb_log_file_size = 128M
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+
+# Connection Settings
+max_connections = 200
+max_allowed_packet = 256M
+
+# Query Cache (disabled in MariaDB 10.6+)
+# query_cache_size = 0
+# query_cache_type = 0
+
+# Logging
+slow_query_log = 1
+slow_query_log_file = /var/lib/mysql/slow-query.log
+long_query_time = 2
+
+# Binary Logging
+log_bin = /var/lib/mysql/mysql-bin.log
+expire_logs_days = 7
+max_binlog_size = 100M
+
+[client]
+default-character-set = utf8mb4
