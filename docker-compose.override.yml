@@ -1,0 +1,55 @@
+# Local overrides for frappe_docker's devcontainer-example compose file.
+#
+# Upstream (frappe_docker/.devcontainer/docker-compose.yml) owns the images,
+# charset flags and MARIADB_AUTO_UPGRADE. This file adds only what a bench
+# running on the *host* needs: published ports, healthchecks, and queue
+# persistence. Run ./setup.sh to pull upstream changes.
+
+name: frappe-dev
+
+services:
+  # Bench runs on the host, so upstream's dev container stays out of the way.
+  # Start it explicitly with: ./services.sh --profile devcontainer up -d frappe
+  frappe:
+    profiles: ["devcontainer"]
+
+  mariadb:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-cache:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_CACHE_PORT:-13000}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Also backs socketio: frappe's realtime server subscribes to redis_queue.
+  redis-queue:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_QUEUE_PORT:-11000}:6379"
+    volumes:
+      - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-queue-data:

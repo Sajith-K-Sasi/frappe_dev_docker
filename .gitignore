@@ -1,3 +1,6 @@
+# Upstream clone, managed by setup.sh
+frappe_docker/
+
 # Environment variables
 .env
 
