@@ -35,17 +35,76 @@ published ports, healthchecks, and queue persistence.
 
 Ports bind to loopback only. Change them in `.env`.
 
-## Bench setup
+## Installing bench on the host
+
+Instructions are for macOS on Apple Silicon. No MariaDB or Redis **server** is
+needed on the host — that is what this repo's containers are for.
+
+### Prerequisites
+
+| Requirement | Frappe v16 needs | Check with |
+| --- | --- | --- |
+| Python | `>=3.14,<3.15` | `python3 --version` |
+| Node | `>=24` | `node --version` |
+| yarn | any | `yarn --version` |
+| MySQL client libs + pkg-config | to build `mysqlclient` | `pkg-config --modversion mysqlclient` |
 
 ```bash
-bench init --skip-redis-config-generation --frappe-branch version-16 frappe-bench
+brew install mysql-client pkg-config yarn
+echo 'export PKG_CONFIG_PATH="$(brew --prefix)/opt/mysql-client/lib/pkgconfig"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+The `PKG_CONFIG_PATH` export is not optional. Frappe pins `mysqlclient`, a C
+extension, and without it `bench init` fails at compile time — the most common
+macOS install failure. This is the documented recipe from
+[mysqlclient's README](https://github.com/PyMySQL/mysqlclient).
+
+`mysql-client` is keg-only. To also get a `mariadb`/`mysql` CLI on `PATH` for
+poking at the container by hand:
+
+```bash
+echo 'export PATH="$(brew --prefix)/opt/mysql-client/bin:$PATH"' >> ~/.zshrc
+```
+
+If you use nvm alongside Homebrew node, make sure the shell that runs `bench`
+resolves to Node 24 — asset builds otherwise pick up whatever nvm last selected.
+
+### 1. Install bench
+
+```bash
+uv tool install frappe-bench     # or: pipx install frappe-bench
+uv tool update-shell             # puts the tool bin dir on PATH
+bench --version
+```
+
+### 2. Initialize the bench
+
+```bash
+bench init --skip-redis-config-generation \
+           --frappe-branch version-16 \
+           --python "$(brew --prefix python@3.14)/bin/python3.14" \
+           frappe-bench
 cd frappe-bench
 ```
 
-`version-16` is the current stable line; `version-15` also works against
-MariaDB 11.8 if you need it.
+Pass `--python` explicitly — it defaults to bare `python3`, and v16 pins
+`>=3.14,<3.15`, so a stray 3.13 or 3.15 on `PATH` fails the install. Add `--dev`
+for developer mode and dev dependencies. `version-16` is the current stable
+line; `version-15` also works against MariaDB 11.8 if you need it.
 
-Point bench at the containers in `sites/common_site_config.json`:
+### 3. Point bench at the containers
+
+```bash
+bench set-config -g  db_host 127.0.0.1
+bench set-config -gp db_port 3306
+bench set-config -g  redis_cache    redis://127.0.0.1:13000
+bench set-config -g  redis_queue    redis://127.0.0.1:11000
+bench set-config -g  redis_socketio redis://127.0.0.1:11000
+```
+
+`-gp` writes `db_port` as a number rather than a string. Equivalent
+`sites/common_site_config.json`:
 
 ```json
 {
@@ -71,16 +130,34 @@ Drop the redis lines bench wrote into the Procfile, since redis runs in Docker:
 sed -i '' '/redis/d' ./Procfile   # macOS; use sed -i on Linux
 ```
 
-Create a site:
+### 4. Set up Chromium for PDFs
+
+```bash
+bench setup-chrome
+```
+
+v16 dropped wkhtmltopdf. `find_or_download_chromium_executable`
+(`frappe/utils/print_utils.py`) downloads Chromium into `<bench>/chromium` when
+it is not already on `PATH`. Worth knowing if you are weighing v15: wkhtmltopdf
+is no longer in homebrew/core at all, so PDF generation there is a real chore.
+
+### 5. Create a site
 
 ```bash
 bench new-site --db-root-password 123 --admin-password admin \
   --mariadb-user-host-login-scope=% development.localhost
+bench --site development.localhost set-config developer_mode 1
+echo "127.0.0.1 development.localhost" | sudo tee -a /etc/hosts
+bench start
 ```
 
 `--mariadb-user-host-login-scope=%` matters here: connections arrive from the
 Docker bridge rather than localhost, so the site's DB user must not be pinned to
 a single host.
+
+The site is then at http://development.localhost:8000 — `Administrator` /
+`admin`. Start the containers first if they are not already up
+(`./services.sh up -d`).
 
 ## Common commands
 
@@ -138,15 +215,3 @@ major bump anyway.
   compose profile so it never starts. Bring it up with
   `./services.sh --profile devcontainer up -d frappe` if you ever want to run
   bench inside Docker instead.
-
-## Migrating from the old compose file
-
-The old stack ran under compose project `frappe_dev_docker`; this one uses
-`frappe-dev`, so the old volumes are still on disk but unused:
-
-```bash
-docker volume ls | grep frappe_dev_docker
-```
-
-Restore sites into the new stack with `bench restore`, or drop the old volumes
-once you no longer need them.
