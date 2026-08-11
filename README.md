@@ -147,7 +147,6 @@ is no longer in homebrew/core at all, so PDF generation there is a real chore.
 bench new-site --db-root-password 123 --admin-password admin \
   --mariadb-user-host-login-scope=% development.localhost
 bench --site development.localhost set-config developer_mode 1
-echo "127.0.0.1 development.localhost" | sudo tee -a /etc/hosts
 bench start
 ```
 
@@ -158,6 +157,27 @@ a single host.
 The site is then at http://development.localhost:8000 — `Administrator` /
 `admin`. Start the containers first if they are not already up
 (`./services.sh up -d`).
+
+No `/etc/hosts` entry is needed on macOS: `*.localhost` already resolves to
+loopback per RFC 6761, and browsers special-case it regardless of the system
+resolver. If you do need one — a stricter Linux resolver, or a site name that
+does not end in `.localhost` — use the built-in rather than editing the file by
+hand, since it covers both address families:
+
+```bash
+bench --site development.localhost add-to-hosts
+```
+
+Optionally set the CLI default site so you can drop `--site` from every command:
+
+```bash
+bench use development.localhost
+```
+
+That only writes `default_site` to `common_site_config.json` for the CLI's
+benefit. It does **not** affect browser routing: the dev server picks the site
+from the request's `Host` header (`get_site_name` in `frappe/app.py`) with no
+`default_site` fallback, so `http://localhost:8000` still will not work.
 
 ## Common commands
 
