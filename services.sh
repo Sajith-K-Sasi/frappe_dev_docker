@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Thin `docker compose` wrapper that merges upstream's devcontainer compose
+# Thin `podman compose` wrapper that merges upstream's devcontainer compose
 # file with our override. Passes every argument straight through:
+#
+# NOTE: uses Podman instead of Docker. Ensure the machine is running:
+#   podman machine start
 #
 #   ./services.sh up -d
 #   ./services.sh ps
@@ -25,4 +28,4 @@ args=(
 )
 [ -f "$REPO_DIR/.env" ] && args+=(--env-file "$REPO_DIR/.env")
 
-exec docker compose "${args[@]}" "$@"
+exec podman compose "${args[@]}" "$@"

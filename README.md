@@ -15,11 +15,24 @@ published ports, healthchecks, and queue persistence.
 | --- | --- |
 | `setup.sh` | Clones/refreshes `frappe_docker/`, seeds its `.devcontainer/` |
 | `docker-compose.override.yml` | Our overrides, merged on top of upstream |
-| `services.sh` | `docker compose` wrapper that merges both files |
+| `services.sh` | `podman compose` wrapper that merges both files |
 | `.env.example` | Ports and root password; `setup.sh` copies it to `.env` |
 | `frappe_docker/` | Upstream clone (gitignored) |
 
 ## Quick start
+
+The containers run under [Podman](https://podman.io), not Docker. On macOS it
+needs a Linux VM, created once and started after each reboot:
+
+```bash
+brew install podman podman-compose
+podman machine init              # once
+podman machine start             # after each reboot
+```
+
+`podman compose` hands off to an external compose provider — `podman-compose`
+above, or `docker-compose` if that is what's installed. Everything in this repo
+goes through `./services.sh`, so the choice doesn't matter beyond having one.
 
 ```bash
 ./setup.sh
@@ -124,7 +137,7 @@ writes the key out, so keep it aligned instead of standing up a third instance
 for it. frappe_docker does the same thing in `compose.yaml`, commented
 "add redis_socketio for backward compatibility".
 
-Drop the redis lines bench wrote into the Procfile, since redis runs in Docker:
+Drop the redis lines bench wrote into the Procfile, since redis runs in a container:
 
 ```bash
 sed -i '' '/redis/d' ./Procfile   # macOS; use sed -i on Linux
@@ -151,7 +164,7 @@ bench start
 ```
 
 `--mariadb-user-host-login-scope=%` matters here: connections arrive from the
-Docker bridge rather than localhost, so the site's DB user must not be pinned to
+container network rather than localhost, so the site's DB user must not be pinned to
 a single host.
 
 The site is then at http://development.localhost:8000 — `Administrator` /
@@ -168,16 +181,41 @@ hand, since it covers both address families:
 bench --site development.localhost add-to-hosts
 ```
 
-Optionally set the CLI default site so you can drop `--site` from every command:
+### Several sites on one bench
+
+One `bench start` serves every site in `sites/` — there is no second server to
+run. Each site is reached by its own hostname on the same port, and the dev
+server picks the site from the request's `Host` header:
 
 ```bash
-bench use development.localhost
+bench --site ca-erp.localhost add-to-hosts        # only if *.localhost does not resolve
+bench --site pbca-trust.localhost add-to-hosts
+bench start
 ```
 
-That only writes `default_site` to `common_site_config.json` for the CLI's
-benefit. It does **not** affect browser routing: the dev server picks the site
-from the request's `Host` header (`get_site_name` in `frappe/app.py`) with no
-`default_site` fallback, so `http://localhost:8000` still will not work.
+- http://ca-erp.localhost:8000
+- http://pbca-trust.localhost:8000
+
+The hostname must match the site's folder name under `sites/` exactly; an
+unknown host falls back to the default site, if one is set.
+
+**Do not set a default site on a multi-site bench.** `bench use <site>` (or a
+`default_site` key in `common_site_config.json`, or `FRAPPE_SITE` in the
+environment) is not just a CLI convenience: `bench serve`, which `bench start`
+runs from the Procfile, inherits it and pins the dev server to that one site,
+ignoring the `Host` header. Every hostname then lands on the default site. To
+undo it, remove `default_site` from `sites/common_site_config.json` (and
+`sites/currentsite.txt` on older benches), then restart `bench start`.
+
+Without a default site, pass `--site` to every site-specific command:
+
+```bash
+bench --site pbca-trust.localhost migrate
+bench --site ca-erp.localhost console
+```
+
+On a single-site bench, `bench use development.localhost` is harmless and lets
+you drop `--site`.
 
 ## Common commands
 
@@ -192,15 +230,20 @@ from the request's `Host` header (`get_site_name` in `frappe/app.py`) with no
 
 ```bash
 # MariaDB shell (root password from .env)
-docker exec -it frappe-dev-mariadb-1 mariadb -uroot -p123
+./services.sh exec mariadb mariadb -uroot -p123
 
 # Backup / restore
-docker exec frappe-dev-mariadb-1 mariadb-dump -uroot -p123 --all-databases > backup.sql
-docker exec -i frappe-dev-mariadb-1 mariadb -uroot -p123 < backup.sql
+./services.sh exec -T mariadb mariadb-dump -uroot -p123 --all-databases > backup.sql
+./services.sh exec -T mariadb mariadb -uroot -p123 < backup.sql
 
 # Flush caches
-docker exec frappe-dev-redis-cache-1 redis-cli FLUSHALL
+./services.sh exec redis-cache redis-cli FLUSHALL
 ```
+
+These go through `exec` by **service** name rather than `podman exec` by
+container name, because container names differ between compose providers
+(`frappe-dev-mariadb-1` vs `frappe-dev_mariadb_1`). `-T` turns off the TTY so
+redirects stay clean.
 
 Prefer `bench backup` over `mariadb-dump` for real site backups — it captures
 site files too.
@@ -234,4 +277,4 @@ major bump anyway.
 - **The upstream `frappe` dev container is gated** behind the `devcontainer`
   compose profile so it never starts. Bring it up with
   `./services.sh --profile devcontainer up -d frappe` if you ever want to run
-  bench inside Docker instead.
+  bench inside a container instead.
