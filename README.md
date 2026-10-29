@@ -217,6 +217,35 @@ bench --site ca-erp.localhost console
 On a single-site bench, `bench use development.localhost` is harmless and lets
 you drop `--site`.
 
+### Creating an app and installing it on a site
+
+Apps live in the bench's `apps/` folder and are shared by every site; each site
+then opts in with `install-app`. Run these from the bench directory:
+
+```bash
+bench new-app my_app                                   # scaffold apps/my_app (prompts for title, publisher, etc.)
+bench --site development.localhost install-app my_app
+```
+
+To pull in an existing app instead of scaffolding one:
+
+```bash
+bench get-app https://github.com/frappe/erpnext --branch version-16
+bench --site development.localhost install-app erpnext
+```
+
+`new-app` and `get-app` both add the app to `sites/apps.txt` and install it into
+the bench's virtualenv, but neither touches any site — until `install-app` runs,
+the app's DocTypes and pages do not exist on that site. `install-app` creates
+its tables and runs its install hooks, so no separate `migrate` is needed.
+
+To check or undo:
+
+```bash
+bench --site development.localhost list-apps
+bench --site development.localhost uninstall-app my_app   # drops the app's tables on that site
+```
+
 ## Common commands
 
 ```bash
